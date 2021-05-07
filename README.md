@@ -1,2 +1,4 @@
 # CHRISMB_smoking
-For the smoking paper of the CHRIS salivary microbiome project
+This repository is to store all scripts to replicate the results obtained in the CHRIS salivary microbiome project, in particular in relation to smoking.
+Unfortunately data cannot be available because of privacy reasons.
+
