@@ -1,1 +1,92 @@
+---
+title: "Generate phyloseq object saliva project"
+author: "Giacomo Antonello"
+date: "09/03/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#load libraries
+```{r}
+library(phyloseq)
+library(magrittr)
+```
+# load ASV files and create first phyloseq object
+```{r}
+#OTU table
+otu_tab <- read.csv("00_Taxa_counts_samples_GA.csv", row.names = 1)
+#otu_tab <- data.matrix(otu_tab)
+
+
+#TAXONOMY table
+taxa_tab <- read.csv("00_taxa_assign_GA.csv", row.names = 1)
+taxa_tab <- as.matrix(taxa_tab)
+
+
+#METADATA table | generated using the script in original files/mapping files with its scripts inside
+mapping_tab <- read.csv("mapping file generation/00_CHRISMB_NAFLD mapping file.csv", row.names = 1)
+rownames(mapping_tab) <- mapping_tab$michigan_codes
+mapping_tab <- mapping_tab[match(rownames(otu_tab), mapping_tab$michigan_codes),]
+
+#remove samples not in the mapping table
+otu_tab <- otu_tab[rownames(otu_tab) %in% mapping_tab$michigan_codes,]
+#prune taxa
+otu_tab <- otu_tab[rowSums(otu_tab) > 0,]
+
+#retain taxa table only with ASV that actually show up in the dataset
+taxa_tab <- taxa_tab[rownames(taxa_tab)%in% colnames(otu_tab),]
+
+#Merge previous files together
+otu_tab_ph <- otu_table(otu_tab, taxa_are_rows = FALSE)
+taxa_tab_ph <- tax_table(taxa_tab)
+mapping_tab_ph <- sample_data(mapping_tab)
+ps1 <- merge_phyloseq(otu_tab_ph, taxa_tab_ph, mapping_tab_ph)
+
+```
+the first time I did it, 09_03_2020, here is what happened:
+one sample was absent in the metadata file but was present in the otu_table file: NUIA68376. When inverting the two arguments of the code, I found what was not matching in the otu table, and it was NUIA168376.
+I concluded that there was a typo somewhere along the process, but all sample names remained unique, so I decided to simply correct the typo and write a corrected version of ASV table.
+
+# QC steps
+```{r}
+
+head(sort(sample_sums(ps1)))
+
+ps1_pruned <- subset_samples(ps1, sample_sums(ps1) >= 1000) %>% 
+  prune_taxa(taxa_sums(.)>0,.)
+
+```
+
+#make a fasta file to build a tree
+```{r}
+
+phyloseq_to_fasta(physeq = ps1_pruned, seq_location = "tax_table", destination_file = "reference_seqs/r_generated_CHRISMB_NAFLD_phyloseq.fasta")
+# these two commands need to be run on the cluster, where the two programs have been installed.
+
+#1# username$ mafft --maxiterate 200 r_generated_CHRISMB_phyloseq.fasta > aligned_seqs
+#2# username$ FastTree aligned_seqs -> first_tree_attempt.tre
+
+
+```
+# Add phylogenetic tree
+This tree is generated from MAFFT and FastTree at standard settings, done on the cluster, starting from the fasta file generated in the chunk above.
+```{r}
+tree_file <- ape::read.tree("reference_seqs/first_tree_attempt.tre")
+
+ps1_pruned <- merge_phyloseq(ps1_pruned, tree_file)
+```
+
+```{r}
+#use this only in case you use option 2 for metadata
+## example only chrismb, otherwise use only last line
+study_of_interest <- c("chrismb", "nafld")
+
+ps1_pruned <- subset_samples(ps1_pruned, CHRIS_project == study_of_interest)
+ps1_pruned <- subset_taxa(ps1_pruned_chrismb, taxa_sums(ps1_pruned_chrismb) >0)
+saveRDS(object = ps1_pruned, file = paste("01", paste(study_of_interest, collapse = "_"), "phyloseq.rds", sep = "_"))
+
+
+```
 
